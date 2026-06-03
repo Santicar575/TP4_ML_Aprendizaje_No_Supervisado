@@ -1,0 +1,21 @@
+# Ignorar carpeta de datos
+data/
+
+# Ignorar caché de Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Ignorar archivos de IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Ignorar archivos del sistema
+.DS_Store
+Thumbs.db
+
+# Ignorar notebooks temporales
+.ipynb_checkpoints/
