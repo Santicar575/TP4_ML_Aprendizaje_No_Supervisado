@@ -116,3 +116,26 @@ def set_seed(seed=1973):
     # Forzar a PyTorch a usar algoritmos determinísticos
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
+
+def get_stratified_sample(X, y, n_samples=3000, random_seed=1973):
+    """
+    Extrae una muestra estratificada exacta de n_samples.
+    """
+    np.random.seed(random_seed)
+    classes = np.unique(y)
+    n_classes = len(classes)
+    samples_per_class = n_samples // n_classes
+    
+    indices = []
+
+    for c in classes:
+        c_indices = np.where(y == c)[0]
+        # elijo aleatoriamente samples_per_class índices de la clase c sin reposicion
+        chosen_indices = np.random.choice(c_indices, samples_per_class, replace=False)
+        indices.extend(chosen_indices)
+        
+    # mezclo para que no quede ordenado por clase
+    indices = np.array(indices)
+    np.random.shuffle(indices)
+    
+    return X[indices], y[indices]
