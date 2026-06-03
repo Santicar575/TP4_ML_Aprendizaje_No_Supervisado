@@ -1,8 +1,10 @@
 import matplotlib.pyplot as plt
 import numpy as np
+import torch
+import random
 
 
-def print_images(cant_images, images, title, random_seed=1973):
+def print_images(cant_images, images, title, random_seed=1973, cols=5):
     """
     Muestra un número arbitrario de imágenes aleatorias.
     """
@@ -35,7 +37,7 @@ def print_images(cant_images, images, title, random_seed=1973):
     sample_indices = np.random.choice(n_samples, size=cant_images, replace=replace)
     sampled_images = images[sample_indices]
 
-    ncols = min(5, cant_images)
+    ncols = min(cols, cant_images)
     nrows = int(np.ceil(cant_images / ncols))
 
     fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * 2.0, nrows * 2.0))
@@ -51,7 +53,7 @@ def print_images(cant_images, images, title, random_seed=1973):
             ax.imshow(image)
 
         ax.axis("off")
-        ax.set_title(f"Imagen {selected_index}", fontsize=10)
+        ax.set_title(f"Imagen {idx}", fontsize=10)
 
     for ax in axes.flat[cant_images:]:
         ax.axis("off")
@@ -102,3 +104,15 @@ def stratified_split(X, y, train_size=0.8, random_seed=1973):
     y_val = y_val[val_shuffle_idx]
     
     return X_train, X_val, y_train, y_val
+
+def set_seed(seed=1973):
+    """Fija todas las semillas para asegurar reproducibilidad en PyTorch."""
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    
+    # Forzar a PyTorch a usar algoritmos determinísticos
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
