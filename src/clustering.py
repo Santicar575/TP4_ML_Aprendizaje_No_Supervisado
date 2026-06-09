@@ -74,27 +74,33 @@ def logsumexp(a, axis=1):
     
     return np.squeeze(out, axis=axis)
 
-def GMM(X, n_clusters, n_inits=5, max_iters=100, tol=1e-4, random_seed=1973):
+def GMM(X, n_clusters, init_means=None, n_inits=5, max_iters=100, tol=1e-4, random_seed=1973):
     """
     Implementación de GMM usando el algoritmo Expectation-Maximization
     """
+    n_samples, n_features = X.shape
+    emp_cov = np.cov(X, rowvar=False) + np.eye(n_features) * 1e-6                           
+
     best_log_likelihood = -np.inf
     best_mu_k, best_sigma_k, best_pi_k, best_labels = None, None, None, None
-    n_samples, n_features = X.shape
 
-    for init in range(n_inits):
-        np.random.seed(random_seed + init)  # Cambiar la semilla en cada inicializacion para obtener resultados diferentes
-        mu_k = X[np.random.choice(n_samples, n_clusters, replace=False)]
-        emp_cov = np.cov(X, rowvar=False) + np.eye(n_features) * 1e-6
-        sigma_k = np.array([emp_cov for _ in range(n_clusters)])
+    n_runs = 1 if init_means is not None else n_inits
+
+    for init in range(n_runs):
+        np.random.seed(random_seed + init)
+
+        if init_means is not None:
+            mu_k = init_means.astype(float).copy()
+        else:
+            mu_k = X[np.random.choice(n_samples, n_clusters, replace=False)].astype(float)
+
+        sigma_k = np.array([emp_cov.copy() for _ in range(n_clusters)])
         pi_k = np.ones(n_clusters) / n_clusters
         prev_log_likelihood = -np.inf
-
         for i in range(max_iters):
             # Expectation step
             log_resp = np.zeros((n_samples, n_clusters))
             for k in range(n_clusters):
-                # Usamos nuestra propia función matemática
                 log_resp[:, k] = np.log(pi_k[k]) + multivariate_normal_logpdf(X, mu_k[k], sigma_k[k])
             log_prob_norm = logsumexp(log_resp, axis=1)
             log_likelihood = np.sum(log_prob_norm)
@@ -133,15 +139,12 @@ def GMM(X, n_clusters, n_inits=5, max_iters=100, tol=1e-4, random_seed=1973):
 
 def silhouette_score(X, labels):
     """
-    Calcula el Silhouette Score global utilizando únicamente NumPy.
-    Implementación optimizada con matriz de distancias pairwise.
+    Calcula el Silhouette Score global
     """
     n_samples = len(X)
     unique_labels = np.unique(labels)
     
-    # Truco algebraico para calcular la matriz de distancias súper rápido
     X_sq = np.sum(X**2, axis=1)
-    # clip(..., 0) evita raíces cuadradas de números microscópicamente negativos por error de flotante
     dist_matrix = np.sqrt(np.clip(X_sq[:, np.newaxis] + X_sq - 2 * np.dot(X, X.T), 0, None))
     
     s_i = np.zeros(n_samples)
@@ -149,21 +152,21 @@ def silhouette_score(X, labels):
     for i in range(n_samples):
         cluster_i = labels[i]
         
-        # Distancias desde el punto 'i' a todos los demás
+        # Distancias desde el punto 'i' a todos los demas puntos
         dists_i = dist_matrix[i]
         
-        # --- Calcular a(i): Distancia intra-cluster ---
+        # distancia intra-cluster
         same_cluster_mask = (labels == cluster_i)
         same_cluster_mask[i] = False # Nos excluimos a nosotros mismos
         
-        # Si el cluster tiene un solo punto, por convención el silhouette es 0
+        # si el cluster tiene un solo punto, por convención el silhouette es 0
         if np.sum(same_cluster_mask) == 0:
             s_i[i] = 0.0
             continue
             
         a_i = np.mean(dists_i[same_cluster_mask])
         
-        # --- Calcular b(i): Distancia al cluster vecino más cercano ---
+        # distancia al cluster vecino mas cercano 
         b_i = np.inf
         for other_cluster in unique_labels:
             if other_cluster == cluster_i:
@@ -175,7 +178,7 @@ def silhouette_score(X, labels):
             if avg_dist_to_other < b_i:
                 b_i = avg_dist_to_other
                 
-        # --- Calcular Silhouette para el punto 'i' ---
+        # Silhouette para el punto 'i' 
         s_i[i] = (b_i - a_i) / max(a_i, b_i)
         
     # El score global es el promedio de todos los puntos
@@ -183,17 +186,43 @@ def silhouette_score(X, labels):
 
 import numpy as np
 
+def find_elbow_point(x, y):
+    """
+    Encuentra el punto del codo matemáticamente calculando la máxima 
+    distancia perpendicular desde cada punto a la línea que une los extremos.
+    """
+    x = np.array(x)
+    y = np.array(y)
+    
+    # Coordenadas del primer y ultimo punto
+    p1 = np.array([x[0], y[0]])
+    p2 = np.array([x[-1], y[-1]])
+    
+    # Vector de la linea
+    line_vec = p2 - p1
+    line_len = np.linalg.norm(line_vec)
+    line_unitvec = line_vec / line_len
+    
+    distances = []
+    for i in range(len(x)):
+        p = np.array([x[i], y[i]])
+        p1_to_p = p - p1
+        proj = np.dot(p1_to_p, line_unitvec) * line_unitvec
+        perp_vec = p1_to_p - proj
+        distances.append(np.linalg.norm(perp_vec))
+        
+    # El codo es el indice de la distancia maxima
+    elbow_idx = np.argmax(distances)
+    return x[elbow_idx], y[elbow_idx]
+
 def calculate_H_P(D, beta):
-    """Función auxiliar para calcular Entropía y Probabilidades en alta dimensionalidad (Estabilizada)."""
+    """Funcion auxiliar para calcular Entropía y Probabilidades """
     P = np.exp(-D * beta)
     
-    # 1. Agregamos un número pequeñísimo para evitar que P sea todo ceros
     P = np.maximum(P, 1e-12) 
     
     sumP = np.sum(P)
-    
-    # 2. Agregamos el mismo número a la suma para que el logaritmo no explote
-    sumP = np.maximum(sumP, 1e-12) 
+    sumP = np.maximum(sumP, 1e-12) # para que el logaritmo no explote
     
     H = np.log(sumP) + beta * np.sum(D * P) / sumP
     
@@ -203,13 +232,12 @@ def compute_pairwise_distances(X):
     """Calcula la matriz de distancias cuadradas euclidianas."""
     sum_X = np.sum(np.square(X), 1)
     D = np.add(np.add(-2 * np.dot(X, X.T), sum_X).T, sum_X)
-    return np.maximum(D, 0) # Evitar negativos microscópicos por error de flotante
+    return np.maximum(D, 0)
 
 def get_perplexity_and_p(D, perplexity=30.0, tol=1e-5):
-    """Búsqueda binaria para encontrar la varianza (sigma) de cada punto que alcance la perplejidad deseada."""
     n = D.shape[0]
     P = np.zeros((n, n))
-    beta = np.ones((n, 1)) # beta = 1 / (2 * sigma^2)
+    beta = np.ones((n, 1)) 
     logU = np.log(perplexity)
     
     for i in range(n):
@@ -217,10 +245,8 @@ def get_perplexity_and_p(D, perplexity=30.0, tol=1e-5):
         betamax = np.inf
         Di = D[i, np.concatenate((np.r_[0:i], np.r_[i+1:n]))]
         
-        # Calcular P y Entropía (H) inicial
         H, thisP = calculate_H_P(Di, beta[i])
         
-        # Búsqueda binaria
         tries = 0
         while np.abs(H - logU) > tol and tries < 50:
             if H > logU:
@@ -240,7 +266,6 @@ def get_perplexity_and_p(D, perplexity=30.0, tol=1e-5):
 def tsne(X, no_dims=2, perplexity=30.0, max_iter=300):
     """
     Algoritmo t-SNE principal.
-    Reducimos iteraciones a 300 para que termine en un tiempo razonable para el TP.
     """
     n, d = X.shape
     initial_momentum = 0.5
@@ -253,12 +278,10 @@ def tsne(X, no_dims=2, perplexity=30.0, max_iter=300):
     iY = np.zeros((n, no_dims))
     gains = np.ones((n, no_dims))
     
-    # 1. Probabilidades en alta dimensión (Distribución Normal)
-    print("t-SNE: Calculando afinidades P (esto puede tardar...)")
+    
     D = compute_pairwise_distances(X)
     P = get_perplexity_and_p(D, perplexity)
     
-    # Simetrizar y exagerar (Early Exaggeration para mejorar la separación)
     P = P + P.T
     P = P / np.sum(P)
     P = P * 4.0 
@@ -266,7 +289,7 @@ def tsne(X, no_dims=2, perplexity=30.0, max_iter=300):
     
     print(f"t-SNE: Iniciando Descenso de Gradiente ({max_iter} iteraciones)...")
     for iter in range(max_iter):
-        # 2. Probabilidades en baja dimensión (Distribución t-Student)
+        # Probabilidades en baja dimensión (Distribución t-Student)
         sum_Y = np.sum(np.square(Y), 1)
         num = -2.0 * np.dot(Y, Y.T)
         num = 1.0 / (1.0 + np.add(np.add(num, sum_Y).T, sum_Y))
@@ -274,12 +297,10 @@ def tsne(X, no_dims=2, perplexity=30.0, max_iter=300):
         Q = num / np.sum(num)
         Q = np.maximum(Q, 1e-12)
         
-        # 3. Gradiente
         PQ = P - Q
         for i in range(n):
             dY[i, :] = np.sum(np.tile(PQ[:, i] * num[:, i], (no_dims, 1)).T * (Y[i, :] - Y), 0)
             
-        # 4. Actualización con Momento (Momentum trick)
         momentum = initial_momentum if iter < 20 else final_momentum
         gains = (gains + 0.2) * ((dY > 0) != (iY > 0)) + (gains * 0.8) * ((dY > 0) == (iY > 0))
         gains[gains < min_gain] = min_gain
@@ -287,7 +308,6 @@ def tsne(X, no_dims=2, perplexity=30.0, max_iter=300):
         Y = Y + iY
         Y = Y - np.mean(Y, 0) # Centrar
         
-        # Detener la exageración temprana
         if iter == 100:
             P = P / 4.0
             
@@ -297,3 +317,69 @@ def tsne(X, no_dims=2, perplexity=30.0, max_iter=300):
             print(f"Iteración {iter+1}: Error (KL Divergence) = {C:.4f}")
             
     return Y
+
+def align_clusters_to_classes(labels_pred, true_labels, n_classes=10):
+    """Remapea cada cluster al color de la clase real mayoritaria que contiene."""
+    clusters = np.unique(labels_pred)
+    n_clusters = len(clusters)
+
+    # Matriz de contingencia: filas = clusters, columnas = clases reales
+    cont = np.zeros((n_clusters, n_classes), dtype=int)
+    for i, c in enumerate(clusters):
+        mask = labels_pred == c
+        cont[i, :] = np.bincount(true_labels[mask], minlength=n_classes)
+
+    # Lista de (coincidencias, idx_cluster, idx_clase) ordenada de mayor a menor
+    pares = [(cont[i, j], i, j) for i in range(n_clusters) for j in range(n_classes)]
+    pares.sort(reverse=True)
+
+    mapping = {}
+    clusters_usados = set()
+    clases_usadas = set()
+
+    for _, i, j in pares:
+        c = clusters[i]
+        if c not in clusters_usados and j not in clases_usadas:
+            mapping[c] = j
+            clusters_usados.add(c)
+            clases_usadas.add(j)
+
+    clases_libres = [j for j in range(n_classes) if j not in clases_usadas]
+    for c in clusters:
+        if c not in mapping:
+            mapping[c] = clases_libres.pop() if clases_libres else int(cont[list(clusters).index(c)].argmax())
+
+    new_labels = np.array([mapping[l] for l in labels_pred])
+    return new_labels
+
+def plot_cluster_quality(labels_pred, true_labels, title, k, class_names):
+    import matplotlib.pyplot as plt
+    cluster_counts = np.bincount(labels_pred, minlength=k)
+    
+    # Matriz para guardar cuántos elementos de cada True Class hay en cada Cluster
+    composition_matrix = np.zeros((k, 10))
+    for c in range(k):
+        true_in_c = true_labels[labels_pred == c]
+        if len(true_in_c) > 0:
+            counts = np.bincount(true_in_c, minlength=10)
+            composition_matrix[c, :] = counts
+
+    fig, ax = plt.subplots(figsize=(14, 6))
+    
+    bottom = np.zeros(k)
+    x = np.arange(k)
+    
+    colors = plt.cm.tab10(np.linspace(0, 1, 10))
+    for i in range(10):
+        bars = ax.bar(x, composition_matrix[:, i], bottom=bottom, label=class_names[i], color=colors[i])
+        bottom += composition_matrix[:, i]
+        
+    ax.set_title(f'Homogeneidad y Tamaño de Clusters: {title}', fontsize=14)
+    ax.set_xlabel('ID del Cluster (Algoritmo No Supervisado)')
+    ax.set_ylabel('Cantidad de Muestras')
+    ax.set_xticks(x)
+    ax.set_xticklabels([f'C_{c}\n(N={int(cluster_counts[c])})' for c in x])
+    ax.legend(title='Clase Real', bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.tight_layout()
+    plt.grid(axis='y', alpha=0.3)
+    plt.show()

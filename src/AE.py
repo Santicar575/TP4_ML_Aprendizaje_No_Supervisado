@@ -80,6 +80,7 @@ class Trainer():
         self.model = model.to(self.device)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr, weight_decay=wd)
         self.criterion = nn.MSELoss()
+        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=300, eta_min=1e-5)
         self.train_loader = train_loader
         self.val_loader = val_loader
     
@@ -96,6 +97,7 @@ class Trainer():
             train_loss, val_loss = self.run_epoch()
             loss_hist.append(train_loss)
             val_loss_hist.append(val_loss)
+            self.scheduler.step()
 
             if early_stopping:
                 if val_loss < best_val_loss - min_delta:
@@ -126,6 +128,7 @@ class Trainer():
             loss = self.criterion(outputs, inputs) 
             loss.backward()
             
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
             self.optimizer.step()
             total_loss_train += loss.item()
         
